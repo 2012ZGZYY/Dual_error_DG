@@ -256,12 +256,19 @@ void ConservationLaw<dim>::integrate_boundary_term_explicit
                                            Wplus[q],
                                            boundary_values[q],
                                            Wminus[q]);
-      numerical_normal_flux(fe_v.normal_vector(q),
-                            Wplus[q],
-                            Wminus[q],
-                            cell_average[cell_no],
-                            cell_average[cell_no],
-                            normal_fluxes[q]);
+      //if on the slip solid boundary wall then adopt the no_penetration_flux 
+      if(boundary_kind == EulerEquations<dim>::BoundaryKind::no_penetration_boundary)
+         EulerEquations<dim>::no_penetration_flux(fe_v.normal_vector(q),
+                                                  Wminus[q],
+                                                  normal_fluxes[q]);
+      //otherwise(i.e. in/out/pressure/farfield), take the standard method to compute the boundary flux.
+      else
+         numerical_normal_flux(fe_v.normal_vector(q),
+                               Wplus[q],
+                               Wminus[q],
+                               cell_average[cell_no],
+                               cell_average[cell_no],
+                               normal_fluxes[q]);
    }
    
    // Now assemble the face term

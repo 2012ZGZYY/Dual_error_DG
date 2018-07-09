@@ -1067,14 +1067,12 @@ struct EulerEquations
             
 	      case no_penetration_boundary:
 	      {
-            // We prescribe the
-            // velocity (we are dealing with a
-            // particular component here so
-            // that the average of the
-            // velocities is orthogonal to the
-            // surface normal.  This creates
-            // sensitivies of across the
-            // velocity components.
+            
+            //what I commented here is the original code for computing Wminus on solid wall boundary.
+            //Here the definition of wminus ensures a vanishing average normal velocity. 
+            //however this standard method is not adjoint consistent. See Hartmann's paper "Adjoint 
+            //consistency anlysis of discontinuous galerkin discretizations(2007)" for more detail.
+            /*
             typename DataVector::value_type
                vdotn = 0;
             for (unsigned int d = 0; d < dim; d++)
@@ -1084,6 +1082,18 @@ struct EulerEquations
             {
                Wminus[c] = Wplus[c] - 2.0 * vdotn * normal_vector[c];
             }
+
+            Wminus[density_component] = Wplus[density_component];
+            Wminus[energy_component]  = Wplus[energy_component];
+            break;
+            */
+            //In the following I have adopted Hartman's method to compute Wminus.
+            typename DataVector::value_type vdotn = 0;
+
+            for (unsigned int d = 0; d < dim; d++)
+               vdotn += Wplus[d]*normal_vector[d];
+            for (unsigned int c=0; c<dim; ++c)
+               Wminus[c] = Wplus[c] - vdotn * normal_vector[c];
 
             Wminus[density_component] = Wplus[density_component];
             Wminus[energy_component]  = Wplus[energy_component];

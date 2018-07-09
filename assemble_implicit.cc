@@ -376,14 +376,22 @@ void ConservationLaw<dim>::integrate_boundary_term (DoFInfo& dinfo,
    //NormalFlux *normal_fluxes = new NormalFlux[n_q_points];
    std::vector<std::array<Sacado::Fad::DFad<double>, EulerEquations<dim>::n_components>> 
                                                               normal_fluxes(n_q_points);
-   
-   for (unsigned int q=0; q<n_q_points; ++q){
-      numerical_normal_flux(fe_v.normal_vector(q),
-                            Wplus[q], 
-                            Wminus[q],
-                            cell_average[cell_no],
-                            cell_average[cell_no],
-                            normal_fluxes[q]);
+   //if on the slip solid boundary wall then adopt the no_penetration_flux 
+   if(boundary_kind == EulerEquations<dim>::BoundaryKind::no_penetration_boundary)
+      for (unsigned int q=0; q<n_q_points; ++q){
+         EulerEquations<dim>::no_penetration_flux(fe_v.normal_vector(q),
+                                                  Wminus[q],
+                                                  normal_fluxes[q]);
+      }
+   //otherwise(i.e. in/out/pressure/farfield), take the standard method to compute the boundary flux.
+   else
+      for (unsigned int q=0; q<n_q_points; ++q){
+         numerical_normal_flux(fe_v.normal_vector(q),
+                               Wplus[q], 
+                               Wminus[q],
+                               cell_average[cell_no],
+                               cell_average[cell_no],
+                               normal_fluxes[q]);
       //std::cout<<"flux of cell: "<<cell_no<<" point: "<<q<<"is ";
       //for(unsigned int i=0;i<EulerEquations<dim>::n_components;++i)
       //   std::cout<<normal_fluxes[q][i].val()<<",";
