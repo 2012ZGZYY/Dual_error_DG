@@ -207,7 +207,7 @@ void ConservationLaw<dim>::read_from_solution_file(const std::string& filename){
    //assign the data in initial_file to current_solution
    double u;
    Vector<double>::iterator i=current_solution.begin();
-   for(int j=0; j<count; j++){
+   for(unsigned int j=0; j<count; j++){
       solution_in>>u;
       //std::cout<<u<<std::endl;
       *i = u;

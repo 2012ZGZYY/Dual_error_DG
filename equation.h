@@ -216,15 +216,17 @@ struct EulerEquations
    }
    
    //---------------------------------------------------------------------------
-   // Compute flux along normal
+   // Compute flux along normal. i.e. F(u) dot normal 
    //---------------------------------------------------------------------------
-   template <typename InputVector, typename number>
+   //template <typename InputVector, typename number>
+   template <typename InputVector>
    static
-   void normal_flux (const InputVector           &W,
+   void compute_normal_flux (const InputVector           &W,
                      const dealii::Tensor<1,dim> &normal,
                      //number                      (&flux)[n_components]
-                     std::array<number, n_components>           &flux)
+                     std::array<typename InputVector::value_type, n_components>   &flux)
    {
+      typedef typename InputVector::value_type number;
       const number pressure = compute_pressure<number> (W);
       
       number vdotn = 0.0;
@@ -437,6 +439,28 @@ struct EulerEquations
       // Dissipation flux
       for (unsigned int c=0; c<n_components; ++c)
          normal_flux[c] += 0.5 * lambda * (Wplus[c] - Wminus[c]);
+   }
+
+   // --------------------------------------------------------------------------
+   // Local lax-Friedrichs flux, different from the above one
+   // --------------------------------------------------------------------------
+   template <typename InputVector>
+   static
+   void lax_friedrichs_flux(const dealii::Tensor<1, dim>&  normal,
+                            const InputVector&             Wplus,
+                            const InputVector&             Wminus,
+                            const double                   alpha,
+                            std::array<typename InputVector::value_type, n_components>& normal_flux 
+                            )
+   {
+    typedef typename InputVector::value_type number;
+    std::array<number, n_components> flux_in, flux_out;
+
+    //the inflow and outflow normal flux
+    normal_flux (Wplus, normal, flux_in);
+    normal_flux (Wminus, normal, flux_out);
+    for(unsigned int i=0; i<n_components; ++i)
+       normal_flux[i] = 1./2*(flux_in[i] + flux_out[i] - alpha*(Wminus[i] - Wplus[i])); 
    }
    
    // --------------------------------------------------------------------------
@@ -866,13 +890,19 @@ struct EulerEquations
 
       // pressure
       number pressure = compute_pressure<number> (Wminus);
-      
+          
       for (unsigned int c=0; c<n_components; ++c)
          normal_flux[c] = 0.0;
       
       // Only pressure flux is present
       for (unsigned int c=0; c<dim; ++c)
          normal_flux[c] = pressure * normal[c];
+
+      //note: if we want to use this flux in our code, we must add following 2 lines
+      //since we cannot directly assign 0 to normal_flux, since that will cause error
+      //when sacado tries to compute derivatives.
+      normal_flux[density_component] = Wminus[density_component] * 0;
+      normal_flux[energy_component]  = Wminus[energy_component] * 0;
    }
    
    //---------------------------------------------------------------------------
@@ -1066,13 +1096,7 @@ struct EulerEquations
 	      }
             
 	      case no_penetration_boundary:
-	      {
-            
-            //what I commented here is the original code for computing Wminus on solid wall boundary.
-            //Here the definition of wminus ensures a vanishing average normal velocity. 
-            //however this standard method is not adjoint consistent. See Hartmann's paper "Adjoint 
-            //consistency anlysis of discontinuous galerkin discretizations(2007)" for more detail.
-            /*
+	      {              
             typename DataVector::value_type
                vdotn = 0;
             for (unsigned int d = 0; d < dim; d++)
@@ -1086,17 +1110,7 @@ struct EulerEquations
             Wminus[density_component] = Wplus[density_component];
             Wminus[energy_component]  = Wplus[energy_component];
             break;
-            */
-            //In the following I have adopted Hartman's method to compute Wminus.
-            typename DataVector::value_type vdotn = 0;
-
-            for (unsigned int d = 0; d < dim; d++)
-               vdotn += Wplus[d]*normal_vector[d];
-            for (unsigned int c=0; c<dim; ++c)
-               Wminus[c] = Wplus[c] - vdotn * normal_vector[c];
-
-            Wminus[density_component] = Wplus[density_component];
-            Wminus[energy_component]  = Wplus[energy_component];
+            
             break;
 	      }
             
@@ -1112,7 +1126,145 @@ struct EulerEquations
       }
    }
    
-   
+   //---------------------------------------------------------------------------
+   // Compute conservative variables W on solid wall boundary, which will be 
+   // used in compute_Wminus(). W_wall is obtained by subtracting the normal 
+   // velocity component of W, i.e. v is replaced by v_wall = v - (v dot n)n,
+   // which will ensures that the normal velocity component vanishes: v_wall dot n = 0
+   //---------------------------------------------------------------------------
+   template <typename DataVector>
+   static
+   void
+   compute_W_wall (const dealii::Tensor<1,dim>  &normal_vector,
+                   const DataVector             &Wplus,
+                   const DataVector             &W_wall)
+   {
+      typename DataVector::value_type vdotn = 0;
+
+      for (unsigned int d = 0; d < dim; d++)
+            vdotn += Wplus[d]*normal_vector[d];
+      for (unsigned int c=0; c<dim; ++c)
+            W_wall[c] = Wplus[c] - vdotn * normal_vector[c];
+
+      W_wall[density_component] = Wplus[density_component];
+      W_wall[energy_component]  = Wplus[energy_component];
+   }
+
+   //---------------------------------------------------------------------------
+   //compute the boundary flux directly from a known value of the variables at
+   //the boundary. i.e. the weak-prescribed method.
+   //see "a guide to the implementation of boundary conditions in compact high-
+   //order methods for compressible aerodynamics" for more detail.
+   //---------------------------------------------------------------------------
+   template <typename DataVector>
+   static
+   void
+   compute_W_prescribed (const BoundaryKind           &boundary_kind,
+                         const dealii::Tensor<1,dim>  &normal_vector,
+                         const DataVector             &Wplus,
+                         const dealii::Vector<double> &boundary_values,
+                         const DataVector             &Wbound)
+   {
+    switch (boundary_kind)
+    {
+      case farfield_boundary:
+      {
+         typedef typename DataVector::value_type number;
+         //define some varibals that will be used when compute Wbound
+         number sb, vdotn_b, cb, rho_b, pressure_b, kinetic_energy;
+         number Rplus, Rminus; 
+         //thermodynamic variables of the free stream
+         const number pressure_inf = compute_pressure<number> (boundary_values);
+         const number rho_inf = boundary_values(density_component);
+         const number sonic_inf = std::sqrt(gas_gamma * pressure_inf / rho_inf);
+         //normal velocity of free stream
+         number vdotn_inf = 0;
+         for (unsigned int d=0; d<dim; ++d)
+            vdotn_inf += boundary_values(d) * normal_vector[d];
+         vdotn_inf /=  rho_inf;
+         //thermodynamic variables of the interior of the domain
+         const number pressure = compute_pressure<number> (Wplus);
+         const number rho = Wplus[density_component];
+         const number sonic = std::sqrt(gas_gamma * pressure / rho);
+         //normal velocity of the interior of the domain
+         number vdotn = 0;
+         for (unsigned int d=0; d<dim; ++d)
+            vdotn += Wplus[d] * normal_vector[d];
+         vdotn /=  rho;
+      
+         if(std::fabs(vdotn) > sonic)   //supersonic
+         { 
+            if(vdotn < 0)               //supersonic inflow
+            {
+              for(unsigned int c = 0; c < n_components; ++c)
+                 Wbound[c] = boundary_values(c);
+            }
+            else                        //supersonic outflow
+            {
+              for(unsigned int c = 0; c < n_components; ++c)
+                 Wbound[c] = Wplus[c];
+            }
+         }
+         else                           //subsonic
+         {   
+             if(vdotn < 0)               //subsonic inflow
+            {
+              Rplus  = vdotn + 2.*sonic/(gas_gamma-1);            //flow towards outside
+              Rminus = vdotn_inf - 2.*sonic_inf/(gas_gamma-1);    //flow towards inside
+              vdotn_b    = 0.5*(Rminus + Rplus);                      //normal velocity
+              cb     = (Rplus - Rminus) * (gas_gamma - 1) / 4.;      //sonic 
+              sb     = pressure_inf / std::pow(rho_inf, gas_gamma);         //entropy at boundary
+              rho_b   = std::pow(cb*cb/gas_gamma/sb, 1./(gas_gamma-1.));  //density
+              pressure_b = rho_b * cb*cb /gas_gamma;                  //pressure
+           
+              for(unsigned int d=0; d<dim; d++)
+                 Wbound[d] = rho_b * boundary_values[d]/rho_inf +
+                             rho_b * (vdotn_b - vdotn_inf) * normal_vector[d];
+              Wbound[density_component] = rho_b;
+              kinetic_energy = 0;
+              for(unsigned int d=0; d<dim; ++d)
+                 kinetic_energy += Wbound[d]*Wbound[d];
+              kinetic_energy *= 0.5/rho_b;
+              Wbound[energy_component]  = pressure_b /(gas_gamma -1.) + kinetic_energy;         
+            }
+            else                        //subsonic outflow
+            {
+              Rplus  = vdotn + 2.*sonic/(gas_gamma-1);            //flow towards outside
+              Rminus = vdotn_inf - 2.*sonic_inf/(gas_gamma-1);    //flow towards inside
+              vdotn_b    = 0.5*(Rminus + Rplus);                      //normal velocity
+              cb     = (Rplus - Rminus) * (gas_gamma - 1) / 4.;      //sonic 
+              sb     = pressure / std::pow(rho, gas_gamma);          //entropy at boundary
+              rho_b   = std::pow(cb*cb/gas_gamma/sb, 1./(gas_gamma-1.));  //density
+              pressure_b = rho_b * cb*cb /gas_gamma;                  //pressure
+           
+              for(unsigned int d=0; d<dim; d++)
+                 Wbound[d] = rho_b * Wplus[d]/rho +
+                             rho_b * (vdotn_b - vdotn) * normal_vector[d];
+              Wbound[density_component] = rho_b;
+              kinetic_energy = 0;
+              for(unsigned int d=0; d<dim; ++d)
+                 kinetic_energy += Wbound[d]*Wbound[d];
+              kinetic_energy *= 0.5/rho_b;
+              Wbound[energy_component]  = pressure_b /(gas_gamma -1.) + kinetic_energy;     
+            }
+         }
+         break;
+      }
+      case no_penetration_boundary:
+      {
+         compute_W_wall(normal_vector,
+                        Wplus,
+                        Wbound);
+         break;
+      }
+      default:
+      {  std::cout<<"In the program used a boundary kind which is not implemented in equation.h !"
+                  <<std::endl;
+         Assert (false, dealii::ExcNotImplemented());
+      }
+    }
+   }
+
    //---------------------------------------------------------------------------
    // Compute entropy variables V, given conserved variables W
    //---------------------------------------------------------------------------

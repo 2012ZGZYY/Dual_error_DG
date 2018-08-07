@@ -140,6 +140,8 @@ namespace DualFunctional
 
                   //get the conservative variables on the quadrature_points and compute pressures
                   Table<2,Sacado::Fad::DFad<double>> W(n_q_points, EulerEquations<dim>::n_components);
+                  Table<2,Sacado::Fad::DFad<double>> W_wall(n_q_points, EulerEquations<dim>::n_components);
+
                   std::vector<Sacado::Fad::DFad<double>> pressure(n_q_points);               
                   for(unsigned int point=0;point<n_q_points;++point)
                   {
@@ -149,10 +151,17 @@ namespace DualFunctional
                         W[point][c] += independent_local_dof_values[i]*
                                        fe_boundary_face.shape_value_component(i,point,c);
                      }
+                     //in order to derive adjoint consistent discretization, here we must employ a modified
+                     //target functional J(uh) = J(u-(uh)). where u-(u) = u is consistent.
+                     EulerEquations<dim>::compute_W_wall(normals[point],
+                                                         W[point],
+                                                         W_wall[point]);
+
                      pressure[point] = EulerEquations<dim>::template  
-                                              compute_pressure<Sacado::Fad::DFad<double>>(W[point]);
+                                              compute_pressure<Sacado::Fad::DFad<double>>(W_wall[point]);
                    //note: here must add 'template', otherwise will cause error.
                    }  
+
                   //get the drag contribution from current cell_boundary_face
                   for(unsigned int point=0;point<n_q_points;++point)                 
                      J_cell += normals[point] * psi * pressure[point] * JxW[point];

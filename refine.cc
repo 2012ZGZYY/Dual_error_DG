@@ -69,7 +69,7 @@ compute_refinement_indicators (Vector<double> &refinement_indicators) const
 
        dual_solver.compute_DWR_indicators(refinement_indicators);
      }
-     else if(mesh_name == "naca" || mesh_name == "naca0012")
+     else if(mesh_name == "naca" || mesh_name == "naca0012" || mesh_name == "naca_uns")
       {
          //use the drag on airfoil face as objective functional, assemble the rhs of the dual_system
          //note: here dual_functional serve as only algorithm to assemble rhs_dual, so it will not take

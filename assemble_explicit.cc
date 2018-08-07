@@ -250,25 +250,40 @@ void ConservationLaw<dim>::integrate_boundary_term_explicit
             grad_Wplus[q][c][d] += current_solution(dof_indices[i]) *
                                    fe_v.shape_grad_component(i, q, c)[d];*/
       }
-      
+      /* //the old method in this code 
       EulerEquations<dim>::compute_Wminus (boundary_kind,
                                            fe_v.normal_vector(q),
                                            Wplus[q],
                                            boundary_values[q],
                                            Wminus[q]);
-      //if on the slip solid boundary wall then adopt the no_penetration_flux 
-      if(boundary_kind == EulerEquations<dim>::BoundaryKind::no_penetration_boundary)
-         EulerEquations<dim>::no_penetration_flux(fe_v.normal_vector(q),
-                                                  Wminus[q],
-                                                  normal_fluxes[q]);
-      //otherwise(i.e. in/out/pressure/farfield), take the standard method to compute the boundary flux.
-      else
-         numerical_normal_flux(fe_v.normal_vector(q),
+      numerical_normal_flux(fe_v.normal_vector(q),
                                Wplus[q],
                                Wminus[q],
                                cell_average[cell_no],
                                cell_average[cell_no],
                                normal_fluxes[q]);
+      */
+//===================================================================================================
+      /* //the new method, only 2 boundary kinds: farfield or slip wall
+      //In order to obtain an adjoint-consistent discretization, there will be 2 differences 
+      //when computing the boundary flux comparing to the standard method of dg code.
+      //Firstly, on the boundary, we cannot use the same numerical flux as in the interior
+      //of the domain, rather, we should use H(u+,u-(u+),n) = n dot F(u-(u+)).
+      //Secondly, when compute u-(u+) on solid wall boundary, we should make it satisfy
+      //v dot n = 0, i.e. let v- = v - (vdotn)n, rather than letting v- = v - 2(vdotn)n. 
+      //see Hartmann's paper "derivation of an adjoint consistent discontinuous galerkin
+      //discretization of the compressible euler equations" for more detail.   
+      */     
+      EulerEquations<dim>::compute_W_prescribed(boundary_kind,
+                                                fe_v.normal_vector(q),
+                                                Wplus[q],
+                                                boundary_values[q],
+                                                Wminus[q]);
+       
+      //on all boundaries, the flux is H(u+,u-(u+),n)=n dot F(u-u(u+)), 
+      //while u-(u+) varies on different boundaries kinds.
+      EulerEquations<dim>::compute_normal_flux(Wminus[q], fe_v.normal_vector(q),normal_fluxes[q]);
+//===================================================================================================
    }
    
    // Now assemble the face term
