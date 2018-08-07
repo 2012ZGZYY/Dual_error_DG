@@ -2,7 +2,7 @@
 //Brief Introduction:
 This is the code being a part of my master thesis.
 I make use of the open-source finite element code deal.II and Praveen C's DG solver dflo to 
-generate an adaptivity refined dg solver. The refine strategy is based on the so-called adjoint
+generate an adaptivity refined dg solver. The refinement strategy is based on the so-called adjoint
 method (also called dual method). 
 Compared to the original solver dflo, I have added some modules and made many small changes in my
 code. The main features of my code include:
