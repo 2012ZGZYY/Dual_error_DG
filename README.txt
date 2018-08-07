@@ -1,4 +1,4 @@
-//Written by zeng @Beihang University. If you have any questions, contact me: 154462188@qq.com
+//Written by zeng @Beihang University. If you have any question, contact me: 154462188@qq.com
 //Brief Introduction:
 This is the code being a part of my master thesis.
 I make use of the open-source finite element code deal.II and Praveen C's DG solver dflo to 
