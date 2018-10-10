@@ -274,7 +274,7 @@ void ConservationLaw<dim>::compute_inv_mass_matrix ()
 template <int dim>
 void ConservationLaw<dim>::setup_system ()
 {
-   //DoFRenumbering::Cuthill_McKee (dof_handler);
+   //DoFRenumbering::Cuthill_McKee (dof_handler); 
    
    dof_handler.clear();
    dof_handler.distribute_dofs (fe);
@@ -284,9 +284,7 @@ void ConservationLaw<dim>::setup_system ()
    current_solution.reinit (dof_handler.n_dofs());
    predictor.reinit (dof_handler.n_dofs());
    right_hand_side.reinit (dof_handler.n_dofs());
-//-----------------------------------------------------------------
-   //J_deriv.reinit(dof_handler.n_dofs());  //denote the rhs of dual equation
-//-----------------------------------------------------------------   
+
    cell_average.resize (triangulation.n_active_cells(),
                         Vector<double>(EulerEquations<dim>::n_components));
    
@@ -604,85 +602,6 @@ ConservationLaw<dim>::compute_cell_average ()
 }
 
 //------------------------------------------------------------------------------
-// Computes the drag coefficient of the airfoil
-//------------------------------------------------------------------------------
-/*
-template <int dim>
-void 
-ConservationLaw<dim>::compute_drag_coefficient()  //I add this function myself.
-{
-   AssertThrow(dim==2, ExcNotImplemented());
-   const double alpha = 0*Pi/180;   //CHECK if the inflow angle is 2 degree !
-   Tensor<1,dim> psi;               //rank 1 tensor in 2d space, i.e. a vector with 2 components
-   psi[0]=cos(alpha);
-   psi[1]=sin(alpha);  
-   double J_total=0;
-   const QGauss<dim-1>           face_quadrature(fe.degree+1);  //this is the only thing can be determined by user.
-   
-   FEFaceValues<dim> fe_boundary_face (mapping(),
-                                       fe,     //here fe is a FESystem
-                                       face_quadrature,                             
-                                       update_values|
-                                       update_normal_vectors|
-                                       update_quadrature_points|
-                                       update_JxW_values);
-   typename DoFHandler<dim>::active_cell_iterator cell=dof_handler.begin_active(),
-                                                  endc=dof_handler.end();
-   //loop over the boundary of the airfoil to compute drag
-   for(;cell!=endc;++cell){ 
-      for(unsigned int face_no=0;face_no<GeometryInfo<dim>::faces_per_cell;++face_no)
-         if(cell->face(face_no)->at_boundary()==true)
-         {
-            const unsigned int& boundary_id = cell->face(face_no)->boundary_id();
-            typename EulerEquations<dim>::BoundaryKind boundary_kind = 
-                                          parameters.boundary_conditions[boundary_id].kind;
-            if(boundary_kind == EulerEquations<dim>::BoundaryKind::no_penetration_boundary)  //if this is the airfoil bc.
-            { 
-               fe_boundary_face.reinit(cell, face_no);
-               const unsigned int n_q_points = fe_boundary_face.n_quadrature_points;
-               const unsigned int dofs_per_cell = fe_boundary_face.dofs_per_cell;
-               const std::vector<Tensor<1,dim> > &normals=fe_boundary_face.get_all_normal_vectors();
-               const std::vector<double> &JxW = fe_boundary_face.get_JxW_values();
-               //use dof_indices to store the dof indices of current cell
-               std::vector<types::global_dof_index> dof_indices (dofs_per_cell); 
-               cell->get_dof_indices(dof_indices);
-
-               //define the independent variables(i.e. the solution variables) and the dependent variable(i.e. the drag)
-               Sacado::Fad::DFad<double> J_cell = 0;   //drag
-               std::vector<Sacado::Fad::DFad<double>> independent_local_dof_values(dofs_per_cell);
-               for(unsigned int i=0;i<dofs_per_cell;++i){
-                  independent_local_dof_values[i] = current_solution(dof_indices[i]);
-                  independent_local_dof_values[i].diff(i,dofs_per_cell);
-               }
-
-               //get the conservative variables on the quadrature_points and compute pressures
-               Table<2,Sacado::Fad::DFad<double>> W(n_q_points, EulerEquations<dim>::n_components);
-               std::vector<Sacado::Fad::DFad<double>> pressure(n_q_points);               
-               for(unsigned int point=0;point<n_q_points;++point)
-               {
-                  for(unsigned int i=0; i<dofs_per_cell; ++i)
-                  {
-                     const unsigned int c = fe_boundary_face.get_fe().system_to_component_index(i).first;
-                     W[point][c] += independent_local_dof_values[i]*
-                                    fe_boundary_face.shape_value_component(i,point,c);
-                  }
-                  pressure[point] = EulerEquations<dim>::template  
-                                           compute_pressure<Sacado::Fad::DFad<double>>(W[point]);
-                //note: here must add 'template', otherwise will cause error.
-                }  
-               //get the drag contribution from current cell_boundary_face
-               for(unsigned int point=0;point<n_q_points;++point)                 
-                  J_cell += normals[point] * psi * pressure[point] * JxW[point];
-               for(unsigned int k=0;k<dofs_per_cell;++k)
-                  J_deriv(dof_indices[k]) = J_cell.fastAccessDx(k);  
-               J_total += J_cell.val(); 
-            }//if at no_penetration_boundary end
-         }//if at boundary end
-   }//cell loop end 
-   std::cout<<"the total drag is: "<<J_total<<std::endl;
-}
-*/
-//------------------------------------------------------------------------------
 // Computes total angular momentum in the computational domain
 //------------------------------------------------------------------------------
 template <int dim>
@@ -979,10 +898,9 @@ void ConservationLaw<dim>::iterate_implicit (IntegratorImplicit<dim>& integrator
    {
       
       assemble_system (integrator);
-      //std::cout<<"before compute l2_norm of rhs";
-      //right_hand_side.print();
 
-       //print out the primal_matrix
+       //print out the primal_matrix. just for test 
+      /*
       static int count = 0;
       if(count == 0){
       std::cout<<"writing primal matrix"<<std::endl;
@@ -992,12 +910,12 @@ void ConservationLaw<dim>::iterate_implicit (IntegratorImplicit<dim>& integrator
       out.close();   
       count ++;
       }
-       
+       */
 
       res_norm = right_hand_side.l2_norm();
 
       if(nonlin_iter == 0) res_norm0 = res_norm;
-      //std::cout<<"after compute l2_norm of rhs";
+
       std::pair<unsigned int, double> convergence
       = solve (newton_update, res_norm);
       
@@ -1100,8 +1018,17 @@ void ConservationLaw<dim>::run ()
        triangulation.set_manifold(3,ringleb_side_description);
    }
 
-   if(parameters.mesh_filename == "naca0012.msh"){
-      NACA::set_curved_boundaries(triangulation);  //check the boundary id and ensure its correctness.
+   if(parameters.mesh_filename == "naca0012.msh" || "naca_uns.msh"){
+      //firstly we figure out which boundary_id denote the wall_boundary of naca airfoil
+      int naca_boundary_id = -1;
+      for(unsigned int boundary_id = 0; boundary_id < parameters.max_n_boundaries; ++boundary_id){
+         typename EulerEquations<dim>::BoundaryKind boundary_kind = 
+                                          parameters.boundary_conditions[boundary_id].kind; 
+         if(boundary_kind == EulerEquations<dim>::BoundaryKind::no_penetration_boundary) 
+            naca_boundary_id = boundary_id;
+      }
+      NACA::set_curved_boundaries(triangulation, naca_boundary_id);  
+      //warning: check the boundary id and ensure its correctness !
    }
 
    setup_system();
@@ -1204,10 +1131,6 @@ void ConservationLaw<dim>::run ()
       elapsed_time += global_dt;
       ++time_iter;
       
-      // compute the drag coefficient every 200 steps
-      /*if(time_iter % 10 == 0)
-         compute_drag_coefficient();
-      */
       // compute the angular_momentum
       if(time_iter % parameters.ang_mom_step == 0)
          compute_angular_momentum();
@@ -1225,7 +1148,8 @@ void ConservationLaw<dim>::run ()
       }
 
       residual_history.push_back (res_norm);
-      
+         
+
       // Save solution for visualization
       if (elapsed_time >= next_output_time || time_iter == next_output_iter 
             || std::fabs(elapsed_time-parameters.final_time) < 1.0e-13)
@@ -1245,19 +1169,22 @@ void ConservationLaw<dim>::run ()
       }
       
       old_solution = current_solution;
-//-----------------------------------------------------------------      
-      //now R'(U) and J'(U) are both computed, so we solve the dual_equation
-      /* 
-      if(time_iter % 66 == 0)
-         solve_dual_problem();
-      */
-//-----------------------------------------------------------------     
+
       if (parameters.do_refine == true && 
           (elapsed_time >= next_refine_time || time_iter == next_refine_iter))
       {
          Vector<double> refinement_indicators(triangulation.n_active_cells());
-         compute_refinement_indicators(refinement_indicators);
-         
+         double estimated_error_obj;         
+
+         //implemented in refine.cc (->dual_solver.cc)
+         compute_refinement_indicators(refinement_indicators, estimated_error_obj);
+
+         std::cout<<"start to write out the refinement_indicator and converge curve..."<<std::endl;
+         //after computing the refinement indicators, output to a tecplot file.
+         output_refinement_indicators(refinement_indicators); 
+         // Write out dofs----time----true error in the target functional successively to the same file
+         output_converge_curve (dof_handler.n_dofs(), estimated_error_obj);   
+    
          refine_grid(refinement_indicators);
          
          newton_update.reinit (dof_handler.n_dofs());
