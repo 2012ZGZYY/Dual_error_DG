@@ -13,7 +13,7 @@ code. The main features of my code include:
 
 This project is NOT finished yet(2018/8). I'm working on the adjoint consistency these days. 
 
-
+哎，项目烂尾了。从毕业季找工作，到正式工作，近一年来一直很忙，且由于工作换了方向，也没有太大心思搞这个了。这个版本也是当时为了找工作才上传到github上充门面的，姑且留在这给有需要的人吧。这次上传了当时看的一些书和文献。
 //How to run the code:
 
 Set environment variable DEAL_II_DIR=/path/to/dealii/installation
