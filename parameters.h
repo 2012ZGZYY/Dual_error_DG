@@ -197,11 +197,15 @@ namespace Parameters
       RefineType refinement_indicators;
 
       bool do_refine;
+      std::string strategy_name;
       double shock_val;
       double shock_levels;
       double refine_time_step;
+      double refine_fraction;
+      double coarsen_fraction;
       int refine_iter_step;
-      int max_n_cells;      
+      int max_n_cells; 
+           
 
       static void declare_parameters (dealii::ParameterHandler &prm);
       void parse_parameters (dealii::ParameterHandler &prm);

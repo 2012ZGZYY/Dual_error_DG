@@ -27,7 +27,7 @@ public:
 
 //----------------------------------------------------------------------------------------------------
 // NACA0012 airfoil Manifold. Just project the candidate point onto the true boundary in the normal
-// direction to the boundary edge. see the related documentation 
+// direction to the boundary edge. see my master thesis.
 //----------------------------------------------------------------------------------------------------
 class NACA0012: public dealii::Manifold<2,2>
 {
@@ -56,7 +56,7 @@ T naca0012(const T& x)
 
 struct NACA      //serve as a namespace. use it as: NACA::set_curved_boundaries(triangulation);
 {
-   static void set_curved_boundaries(dealii::Triangulation<2>& triangulation)
+   static void set_curved_boundaries(dealii::Triangulation<2>& triangulation, int boundary_id)
    {
    //we move points on airfoil to actual airfoil curve since we are not sure Gmsh has ensured this
    dealii::Triangulation<2>::active_cell_iterator cell = triangulation.begin_active(),
@@ -64,7 +64,7 @@ struct NACA      //serve as a namespace. use it as: NACA::set_curved_boundaries(
    for(; cell!=endc; ++cell)
       for(unsigned int f=0; f<dealii::GeometryInfo<2>::faces_per_cell; ++f)
       {
-         if(cell->face(f)->at_boundary() && cell->face(f)->boundary_id() == 1)
+         if(cell->face(f)->at_boundary() && cell->face(f)->boundary_id() == boundary_id)
          {
             cell->face(f)->set_manifold_id(cell->face(f)->boundary_id());
             for(unsigned int v=0; v<dealii::GeometryInfo<2>::vertices_per_face; ++v)
@@ -85,7 +85,7 @@ struct NACA      //serve as a namespace. use it as: NACA::set_curved_boundaries(
       }
    //attach manifold description
    static NACA0012 airfoil;
-   triangulation.set_manifold (1, airfoil);
+   triangulation.set_manifold (boundary_id, airfoil);  //note that the manifold id is equal to boundary id
    }
 };
 

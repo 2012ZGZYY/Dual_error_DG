@@ -55,16 +55,13 @@ class DualSolver
                const dealii::FESystem<dim>&                    fe,
                const dealii::Vector<double>&                   primal_solution,
                const Parameters::AllParameters<dim>&           parameters,
-               //const ConservationLaw<dim>&                     cons,
                const DualFunctional::DualFunctionalBase<dim>&  dual_functional,
                const unsigned int&                             timestep_no
-               //const std::string&                              base_mesh
-               //const double&                                   present_time,
-               //const double&                                   end_time
                );
     ~DualSolver();
     //const dealii::Vector<double>& solve_dual_problem();
-    void compute_DWR_indicators(dealii::Vector<double>& refinement_indicators);
+    void compute_DWR_indicators(dealii::Vector<double>& refinement_indicators, double& estimated_error_obj);
+    //double get_estimated_error() const;
  private:
     void setup_system();
     void assemble_matrix();
@@ -79,7 +76,7 @@ class DualSolver
     void integrate_cell_term();
     void assemble_rhs();
     std::pair<unsigned int, double> solve();
-    void output_results();
+    void output_results();      //output the dual_solution, implemented in dual_solver.cc
     
 
     //following 4 members are used to obtain informations of the primal_problem
@@ -109,20 +106,6 @@ class DualSolver
     dealii::SparseMatrix<double>              system_matrix_origin;      //used to compute its transpose
     dealii::SparseMatrix<double>              system_matrix_dual;
     dealii::SparseMatrix<double>              system_matrix_identity;
-
-    //use TrilinosWrappers
-    //dealii::TrilinosWrappers::SparseMatrix        system_matrix_dual;        //used in setup_system() 
-    /*
-    //use PETScWrappers
-    MPI_Comm mpi_communicator;
-    const unsigned int n_mpi_processes;
-    const unsigned int this_mpi_process;
-   
-    //dealii::PETScWrappers::MPI::SparseMatrix             system_matrix_dual;
-    dealii::PETScWrappers::SparseMatrix                  system_matrix_dual;
-    dealii::PETScWrappers::MPI::Vector                   system_rhs_dual;
-    dealii::PETScWrappers::MPI::Vector                   solution_dual;     
-    */
     
     dealii::Vector<double>          system_rhs_dual;           //used in setup_system()
     dealii::Vector<double>          solution_dual;             //used in setup_system()
@@ -134,20 +117,17 @@ class DualSolver
     //used in compute_DWR_indicators() to call "triangulation->n_active_cells()"
     const dealii::SmartPointer<const dealii::Triangulation<dim>>  triangulation; 
     const dealii::SmartPointer<const DualFunctional::DualFunctionalBase<dim>> dual_functional; //used in assemble_rhs()
-
+    
+    //double            estimated_error;    //used to store the estimated error in the objective functional
     unsigned int       timestep_no;        //initialized in constructor, used in output_results()
-    //const std::string  base_mesh;
-    //double             present_time; 
-    //double             end_time;    
+
   
     struct Integrator
     {
        Integrator(const dealii::DoFHandler<dim>& dof_handler);
        dealii::MeshWorker::IntegrationInfoBox<dim> info_box;
        dealii::MeshWorker::DoFInfo<dim>            dof_info;
-       dealii::MeshWorker::Assembler::MatrixSimple<dealii::SparseMatrix<double>> assembler;
-       //dealii::MeshWorker::Assembler::MatrixSimple<dealii::TrilinosWrappers::SparseMatrix> assembler; 
-       //dealii::MeshWorker::Assembler::MatrixSimple<dealii::PETScWrappers::SparseMatrix> assembler;   
+       dealii::MeshWorker::Assembler::MatrixSimple<dealii::SparseMatrix<double>> assembler; 
     }; 
 
     // Call the appropriate numerical flux function
@@ -160,7 +140,6 @@ class DualSolver
       const InputVector                &Wminus,
       //const dealii::Vector<double>     &Aplus,
       //const dealii::Vector<double>     &Aminus,
-      //typename InputVector::value_type (&normal_flux)[EulerEquations<dim>::n_components]
       std::array<typename InputVector::value_type, EulerEquations<dim>::n_components> &normal_flux
    ) const
    {

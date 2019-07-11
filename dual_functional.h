@@ -52,7 +52,7 @@ namespace DualFunctional
    class DragEvaluation: public DualFunctionalBase<dim>
    {
     public: 
-       DragEvaluation (int naca_boundary_id/*const Parameters::AllParameters<dim>& parameters*/);
+       DragEvaluation (const Parameters::AllParameters<dim>& parameters);
 
        virtual void assemble_rhs (const dealii::DoFHandler<dim>& dof_handler,
                                   const dealii::Mapping<dim>&    mapping,
@@ -61,8 +61,9 @@ namespace DualFunctional
     protected:
        //we use parameters here in order to get the corresponding boundary_type of a 
        //specific boundary_id, which is specified by user and known to parameters.
-       //const Parameters::AllParameters<dim>& temp_param;
-       const int naca_boundary_id;
+       const Parameters::AllParameters<dim>& parameters;
+       int naca_boundary_id;
+       int farfield_id;
    };
 
 }

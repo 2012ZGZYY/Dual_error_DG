@@ -86,13 +86,15 @@ private:
 //-----------------------------------------------------------------
    
    std::pair<unsigned int, double> solve (dealii::Vector<double> &solution, double current_residual);
-   //I add this function
-   //void compute_error();  //TODO
 
-   void compute_refinement_indicators (dealii::Vector<double> &indicator) const;
+   //the following function will call another function, so it works as a public interface
+   //(that's why this member function needs 2 arguments)
+   void compute_refinement_indicators (dealii::Vector<double> &indicator, double& estimated_error_obj) const;
    void refine_grid (const dealii::Vector<double> &indicator);
    void refine_forward_step ();
 
+   void output_refinement_indicators (dealii::Vector<double> &indicator) const; 
+   void output_converge_curve (unsigned int dofs, double estimated_error_obj) const;
    void output_results () const;
    
    typedef dealii::MeshWorker::DoFInfo<dim> DoFInfo;
@@ -265,7 +267,10 @@ private:
    double                       elapsed_time;
    int                          time_iter;
    double                       jump_ind_min, jump_ind_max, jump_ind_avg;
-   
+
+   //I add following 2 variables to indicate the error in the objective functional
+   //double                       estimated_error_obj;
+   //double                       true_error_obj;
    // This final set of member variables
    // (except for the object holding all
    // run-time parameters at the very
@@ -321,6 +326,7 @@ private:
    };
    typename ErrorEstimationStrategy::value     error_estimation_strategy;
    */
+
    // Call the appropriate numerical flux function
    template <typename InputVector>
    inline

@@ -276,11 +276,7 @@ void ConservationLaw<dim>::integrate_cell_term (DoFInfo& dinfo,
       }
       local_vector (i) -= F_i.val();
       //local_vector.print(std::cout,3);
-   }
-   
-   //delete[] forcing;
-   //delete[] flux;
-   
+   }  
 }
 
 
@@ -355,6 +351,7 @@ void ConservationLaw<dim>::integrate_boundary_term (DoFInfo& dinfo,
    
    std::vector<Vector<double> >
    boundary_values(n_q_points, Vector<double>(EulerEquations<dim>::n_components));
+
    parameters.boundary_conditions[boundary_id]
    .values.vector_value_list(fe_v.get_quadrature_points(),
                              boundary_values);

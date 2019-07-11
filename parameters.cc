@@ -136,23 +136,26 @@ namespace Parameters
       {
          do_refine        = prm.get_bool ("refinement");
 
-         const std::string method = prm.get("method");
-         if (method == "weighted_residual")
+         strategy_name = prm.get("method");
+
+         if (strategy_name == "weighted_residual")
          {
             refinement_indicators = weighted_residual;
          }
-         else if (method == "residual")
+         else if (strategy_name == "residual")
          {
             refinement_indicators = residual;
          }
-         else if(method == "kelly")
+         else if(strategy_name == "kelly")
          {
             refinement_indicators = kelly;
          }
-         else if(method == "easy")
+         else if(strategy_name == "easy")
          {
             refinement_indicators = easy;
          }
+         refine_fraction  = prm.get_double("refinement fraction");
+         coarsen_fraction = prm.get_double("unrefinement fraction");
          shock_val        = prm.get_double("shock value");
          shock_levels     = prm.get_double("shock levels");
          refine_time_step = prm.get_double("time step");

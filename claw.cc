@@ -984,7 +984,7 @@ void ConservationLaw<dim>::run ()
       else if(parameters.mesh_type == "gmsh")
          grid_in.read_msh(input_file);
    }
-   
+
 //   {
 //      // Use this refine around corner in forward step
 //      unsigned int nrefine = 2;
@@ -1018,7 +1018,8 @@ void ConservationLaw<dim>::run ()
        triangulation.set_manifold(3,ringleb_side_description);
    }
 
-   if(parameters.mesh_filename == "naca0012.msh" || "naca_uns.msh"){
+   if(parameters.mesh_filename == "naca0012.msh" || 
+      parameters.mesh_filename == "naca_uns.msh"){
       //firstly we figure out which boundary_id denote the wall_boundary of naca airfoil
       int naca_boundary_id = -1;
       for(unsigned int boundary_id = 0; boundary_id < parameters.max_n_boundaries; ++boundary_id){
@@ -1169,6 +1170,50 @@ void ConservationLaw<dim>::run ()
       }
       
       old_solution = current_solution;
+  
+      if(time_iter == -1){
+         //global refine
+         Vector<double> refinement_indicators(triangulation.n_active_cells());
+         refinement_indicators = 1;
+
+         GridRefinement::refine_and_coarsen_fixed_number(triangulation, 
+                                                         refinement_indicators,
+                                                         1,
+                                                         0
+                                                         );
+         std::vector<Vector<double> > transfer_in;
+         std::vector<Vector<double> > transfer_out;
+   
+         transfer_in.push_back(old_solution);
+         transfer_in.push_back(predictor);
+   
+         triangulation.prepare_coarsening_and_refinement();
+   
+         SolutionTransfer<dim> soltrans(dof_handler);
+         soltrans.prepare_for_coarsening_and_refinement(transfer_in);
+         
+         triangulation.execute_coarsening_and_refinement ();
+   
+         setup_system ();
+   
+         {
+          Vector<double> new_old_solution(1);
+          Vector<double> new_predictor(1);
+      
+          transfer_out.push_back(new_old_solution);
+          transfer_out.push_back(new_predictor);
+          transfer_out[0].reinit(dof_handler.n_dofs());
+          transfer_out[1].reinit(dof_handler.n_dofs());
+         }
+   
+          soltrans.interpolate(transfer_in, transfer_out);
+
+          old_solution = transfer_out[0];
+          predictor = transfer_out[1];
+          current_solution = old_solution; 
+          newton_update.reinit (dof_handler.n_dofs());
+      }
+
 
       if (parameters.do_refine == true && 
           (elapsed_time >= next_refine_time || time_iter == next_refine_iter))

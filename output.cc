@@ -29,6 +29,10 @@ using namespace dealii;
 // zero the first time we come to this
 // function and is incremented by one at the
 // end of each invokation.
+
+//--------------------------------------------------------------------------------------------
+//write out the primal solution
+//--------------------------------------------------------------------------------------------
 template <int dim>
 void ConservationLaw<dim>::output_results () const
 {
@@ -125,6 +129,46 @@ void ConservationLaw<dim>::output_results () const
    for(int i=0;i<len;++i)
       solution_out<<current_solution[i]<<std::endl;
    solution_out.close();
+}
+
+//--------------------------------------------------------------------------------------------
+// Write out refinement indicators
+//--------------------------------------------------------------------------------------------
+template <int dim>
+void ConservationLaw<dim>::output_refinement_indicators (dealii::Vector<double> &indicator) const
+{
+   DataOut<dim> data_out;
+   data_out.attach_dof_handler (dof_handler);
+   data_out.add_data_vector (indicator, 
+                             "refinement_indicator",
+                             DataOut<dim>::type_cell_data);//TODO
+
+   data_out.build_patches (mapping());
+
+   std::cout << "Writing file of refinement_indicator" << std::endl;   
+   std::ofstream output ("refinement_indicator.plt");
+   data_out.write_tecplot (output);
+}
+
+//--------------------------------------------------------------------------------------------
+// Write out dofs----time----estimated_error_obj successively to the same file
+//--------------------------------------------------------------------------------------------
+template <int dim>
+void ConservationLaw<dim>::output_converge_curve (unsigned int dofs, double estimated_error_obj) const
+{
+   std::ofstream curve_graph("error_vs_dof.plt", std::ios::app);      
+//   timer = std::clock();
+//   double current_time = (double)(timer-start)/CLOCKS_PER_SEC;
+   curve_graph.seekp(0, std::ios::end);
+   std::fstream::off_type lon = curve_graph.tellp();
+   if(lon == 0){    //the file has not been writen
+       curve_graph <<"title = \"error vs dofs\""<<std::endl
+                   <<"variables = \"dofs\", \"error\""<<std::endl
+                   <<"zone t = \""<< parameters.strategy_name << "\"" << std::endl;
+       curve_graph << dofs <<"	"<< estimated_error_obj << std::endl; 
+   }
+   else
+       curve_graph << dofs <<"	"<< estimated_error_obj << std::endl; 
 }
 
 template class ConservationLaw<2>;

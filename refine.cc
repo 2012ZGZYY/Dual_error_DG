@@ -18,7 +18,7 @@ using namespace dealii;
 template <int dim>
 void
 ConservationLaw<dim>::
-compute_refinement_indicators (Vector<double> &refinement_indicators) const
+compute_refinement_indicators (Vector<double> &refinement_indicators, double& estimated_error_obj) const
 {
    //extract mesh_name from parameters.mesh_filename, i.e. remove '.msh' from the filename.
    std::string mesh_name = parameters.mesh_filename;
@@ -47,7 +47,9 @@ compute_refinement_indicators (Vector<double> &refinement_indicators) const
                                    //end_time
                                    );
 
-       dual_solver.compute_DWR_indicators(refinement_indicators);
+       //implemented in dual_solver.cc
+       dual_solver.compute_DWR_indicators(refinement_indicators, estimated_error_obj);  
+      
       }      
      else if(mesh_name == "ringleb_structured" || mesh_name == "ringleb" || mesh_name == "ringleb_structured_refined")
       {
@@ -67,7 +69,7 @@ compute_refinement_indicators (Vector<double> &refinement_indicators) const
                                    //end_time
                                    );
 
-       dual_solver.compute_DWR_indicators(refinement_indicators);
+       dual_solver.compute_DWR_indicators(refinement_indicators, estimated_error_obj);
      }
      else if(mesh_name == "naca" || mesh_name == "naca0012" || mesh_name == "naca_uns")
       {
@@ -75,19 +77,7 @@ compute_refinement_indicators (Vector<double> &refinement_indicators) const
          //note: here dual_functional serve as only algorithm to assemble rhs_dual, so it will not take
          //many arguments.
 
-         //firstly we figure out which boundary_id denote the wall_boundary of naca airfoil
-         int naca_boundary_id;
-         for(unsigned int boundary_id = 0; boundary_id < parameters.max_n_boundaries; ++boundary_id){
-            typename EulerEquations<dim>::BoundaryKind boundary_kind = 
-                                             parameters.boundary_conditions[boundary_id].kind; 
-            if(boundary_kind == EulerEquations<dim>::BoundaryKind::no_penetration_boundary) 
-               naca_boundary_id = boundary_id;
-         }
-         //check the naca_boundary_id is correctly assigned
-         std::cout<<"naca_boundary_id = "<< naca_boundary_id << std::endl;
-         //if (naca_boundary_id<0 || ) std::cout<<"the id of wall_boundary is not correct! ";
-
-         DualFunctional::DragEvaluation<dim> dual_functional(naca_boundary_id); 
+         DualFunctional::DragEvaluation<dim> dual_functional(parameters); 
          
          DualSolver<dim> dual_solver(triangulation,
                                      mapping(),
@@ -97,8 +87,7 @@ compute_refinement_indicators (Vector<double> &refinement_indicators) const
                                      dual_functional,  
                                      time_iter
                                      );
-         dual_solver.compute_DWR_indicators(refinement_indicators);
-         
+         dual_solver.compute_DWR_indicators(refinement_indicators, estimated_error_obj);
       }
      else
       {
@@ -126,6 +115,7 @@ compute_refinement_indicators (Vector<double> &refinement_indicators) const
    {
       AssertThrow(false, ExcNotImplemented());
    }
+
 }
 
 template <int dim>
@@ -153,13 +143,11 @@ ConservationLaw<dim>::refine_grid (const Vector<double> &refinement_indicators)
       }
    }
    else if(parameters.refinement_indicators == Parameters::Refinement::weighted_residual){
-      const double refine_fraction_cells = .3,
-                   coarsen_fraction_cells = .1;
-      GridRefinement::refine_and_coarsen_fixed_number(triangulation, 
-                                                      refinement_indicators,
-                                                      refine_fraction_cells,
-                                                      coarsen_fraction_cells,
-                                                      parameters.max_n_cells);
+      GridRefinement::refine_and_coarsen_fixed_fraction(triangulation, 
+                                                        refinement_indicators,
+                                                        parameters.refine_fraction,
+                                                        parameters.coarsen_fraction,
+                                                        parameters.max_n_cells);
    }
    // Then we need to transfer the
    // various solution vectors from

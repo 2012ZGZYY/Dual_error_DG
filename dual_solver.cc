@@ -50,7 +50,7 @@ DualSolver(const Triangulation<dim>&                       triangulation,
            parameters(parameters), 
            dof_handler(triangulation),
            primal_solution_origin(primal_solution),
-           fe_degree_dual(fe.degree + 0),
+           fe_degree_dual(fe.degree + 1),      //TODO:
            fe_dual(FE_DGQArbitraryNodes<dim>(QGauss<1>(fe_degree_dual+1)),
                                              EulerEquations<dim>::n_components),  
            dof_handler_dual (triangulation),
@@ -96,24 +96,8 @@ DualSolver<dim>::setup_system()
    solution_dual.reinit(dof_handler_dual.n_dofs());
    dual_weights.reinit(dof_handler_dual.n_dofs());
    system_rhs_dual.reinit(dof_handler_dual.n_dofs());
-   
-//------------------------------------------------------------------------------------------------
-   /*
-   //return an IndexSet describing the set of locally owned DoFs as a subset of 0..n_dofs()
-   IndexSet locally_owned_dofs = dof_handler.locally_owned_dofs();
-   //extract the set of global DoF indices that are active on the current DoFHandler. For regular DoFHandlers,
-   //these are all DoF indices, but for DoFHandler objects built on parallel::distributed::Triangulation,
-   //this set is the union of DoFHanler::locally_owned_dofs() and the DoF indices on all ghost cells.
-   DoFTools::extract_locally_relevant_dofs(dof_handler, locally_relevant_dofs);
-   */
-   /*
-   const std::vector<IndexSet> locally_owned_dofs_per_proc =
-                                  DoFTools::locally_owned_dofs_per_subdomain(dof_handler);
-   const IndexSet locally_owned_dofs = locally_owned_dofs_per_proc[this_mpi_process];
 
-   solution_dual.reinit(locally_owned_dofs, mpi_communicator);
-   system_rhs_dual.reinit(locally_owned_dofs, locally_relevant_dofs, mpi_communicator);
-   */
+
 //------------------------------------------------------------------------------------------------
    //set cell index. used to compute dt and mu_shock
    /*
@@ -142,7 +126,7 @@ DualSolver<dim>::setup_system()
 
    //then interpolate the primal_solution to the dual_space, we will use it as linearization point 
    //dof_handler and dof_handler_dual must be subscribed to the same triangulation 
-   primal_solution.reinit(dof_handler_dual.n_dofs());    //denote primal_solution in dual_space
+   primal_solution.reinit(dof_handler_dual.n_dofs());    //denote primal_solution in dual_space, this is a member of dual_solver.
    FETools::interpolate(dof_handler, 
                         primal_solution_origin,          //input
                         dof_handler_dual,
@@ -211,7 +195,10 @@ DualSolver<dim>::assemble_rhs()
 {
    //assemble rhs of the dual_system. input: primal_solution, output: rhs of the dual_problem
    //rhs is a member of the dual class. note here for the PointValueEvaluation, primal_solution is not needed.
-   dual_functional->assemble_rhs(dof_handler_dual, mapping, primal_solution, system_rhs_dual);
+   dual_functional->assemble_rhs(dof_handler_dual, 
+                                 mapping, 
+                                 primal_solution, 
+                                 system_rhs_dual);
 }
 
 template<int dim>
@@ -264,71 +251,30 @@ DualSolver<dim>::solve()
    return std::pair<unsigned int, double>(1,0); 
    */
 //---------------------------------------------------------------------------------------------------
-   //TrilinosWrappers::SolverGMRES
-   //system_matrix_dual.transpose();    
-
-   /*
-   Epetra_Vector x(View, system_matrix_dual.trilinos_matrix().DomainMap(), solution_dual.begin());
-   Epetra_Vector b(View, system_matrix_dual.trilinos_matrix().RangeMap(), system_rhs_dual.begin());
- 
-   AztecOO solver;
-   solver.SetAztecOption(AZ_output, (parameters.output == Parameters::Solver::quiet ? AZ_none: AZ_all));
-   solver.SetAztecOption(AZ_solver, AZ_gmres);
-   solver.SetRHS(&b);
-   solver.SetLHS(&x);
    
-   solver.SetAztecOption(AZ_precond,         AZ_dom_decomp);
-   solver.SetAztecOption(AZ_subdomain_solve, AZ_ilut);
-   solver.SetAztecOption(AZ_overlap,         0);
-   solver.SetAztecOption(AZ_reorder,         0);
-
-   solver.SetAztecParam(AZ_drop,      parameters.ilut_drop);
-   solver.SetAztecParam(AZ_ilut_fill, parameters.ilut_fill);
-   solver.SetAztecParam(AZ_athresh,   parameters.ilut_atol);
-   solver.SetAztecParam(AZ_rthresh,   parameters.ilut_rtol);
-
-   solver.SetUserMatrix(const_cast<Epetra_CrsMatrix *> (&system_matrix_dual.trilinos_matrix()));
-
-   solver.Iterate(parameters.max_iterations, parameters.linear_residual);
-
-   return std::pair<unsigned int, double> (solver.NumIters(), solver.TrueResidual());
-   */
 //---------------------------------------------------------------------------------------------------   
 
    std::cout<<"start to solve the dual system..."<<std::endl;
    //used to determine whether the iteration should be continued,
    //30 is the maximum number of iteration steps before failure, default tolerance
    //to determine success of the iteration is 1e-10
-   SolverControl solver_control(30);
+   SolverControl solver_control(50);
    
    //set the number of temparary vectors to 50, i.e. do a restart every 48 iterations,
    //set right_preconditioning = true, set use_default_residual = true
    SolverGMRES<>::AdditionalData gmres_data(50);
 
    SolverGMRES<> solver(solver_control, gmres_data);
-   
-   //see PreconditionBlock, this class assumes the MatrixType consisting of invertible
-   //blocks on the diagonal and provides the inversion of the diagonal blocks of the matrix
-//   PreconditionBlockSSOR<TrilinosWrappers::SparseMatrix, float> preconditioner;
-   //block size must be given, here is the dofs_per_cell
-//   preconditioner.initialize(system_matrix_dual, fe_dual.dofs_per_cell);
-   
-   //TrilinosWrappers::PreconditionBlockSSOR preconditioner; 
-   //preconditioner.transpose();              //throw error in this line
-   /*
+     
    PreconditionBlockSSOR<SparseMatrix<double>, float> preconditioner; 
    preconditioner.initialize(system_matrix_dual, fe_dual.dofs_per_cell);
-   */
-   PreconditionLU<SparseMatrix<double>, float> preconditioner;
+   
 
    /*  //Jacobi preconditioner
    PreconditionBlockJacobi<SparseMatrix<double>, float> preconditioner;
    preconditioner.initialize(system_matrix_dual, 
                              PreconditionJacobi<SparseMatrix<double>>::AdditionalData(.6));
-   */
-   //PreconditionBlockSSOR<PETScWrappers::SparseMatrix, float> preconditioner;
-   //preconditioner.initialize(system_matrix_dual, fe_dual.dofs_per_cell);
-   
+   */ 
    try{
       solver.solve(system_matrix_dual, solution_dual, system_rhs_dual, preconditioner);
    }
@@ -341,6 +287,7 @@ DualSolver<dim>::solve()
    
 }
 
+//output solution_dual
 template<int dim>
 void
 DualSolver<dim>::output_results()
@@ -371,13 +318,14 @@ DualSolver<dim>::output_results()
    data_out.write_tecplot (output);
 }
 
-//return a const reference, so that other objects can read DualSolver's private member variable. 
 template<int dim>
 void
-DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
+DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators, 
+                                        double& estimated_error_obj)
 {
    Assert (refinement_indicators.size()==triangulation->n_active_cells(),
-           ExcDimensionMismatch(refinement_indicators.size(), triangulation->n_global_active_cells()));
+           ExcDimensionMismatch(refinement_indicators.size(), 
+                                triangulation->n_global_active_cells()));
    //solve the dual_problem to get the dual_weights
    setup_system();
    assemble_matrix();
@@ -401,7 +349,7 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
             <<std::endl
             <<convergence.first<<" "<<convergence.second
             <<std::endl;
-   
+
    //then in the following, compute the error indicator using dual_weights and residual
    //------------------------compute the dual_weights---------------------------------
    //dual_weights: z-z_h. z is in dual_space, z_h is z's interpolation into primal_space. 
@@ -410,29 +358,36 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
    //interpolation from fe1 to fe2, i.e. from dual_space to primal_space
    FETools::interpolation_difference (dof_handler_dual,  //dof1
                                       solution_dual,     //z
-                                      fe,                //fe2
+                                      fe,                //fe2, i.e. primal_space
                                       dual_weights);     //z_differnce
    
-   dual_weights = solution_dual;
-   std::cout<<"start to compute the dual_weights..."<<std::endl;
+   dual_weights = solution_dual;      //TODO
+   std::cout<<"finish computing the dual_weights..."<<std::endl;
+   //output the dual_solution
+   output_results(); 
+
    //-----------------------prepare all the data_structure----------------------------
-   FEValues<dim> fe_values(fe_dual, quadrature_formula, update_values|          //TODO: quadrature_formula
-                                                        update_gradients|
-                                                        update_quadrature_points|
-                                                        update_JxW_values);
+   FEValues<dim> fe_values(fe_dual, quadrature_formula,
+                                    update_values|          //TODO: quadrature_formula
+                                    update_gradients|
+                                    update_quadrature_points|
+                                    update_JxW_values);
    const unsigned int n_q_points = quadrature_formula.size();
    const unsigned int n_components  = EulerEquations<dim>::n_components;
    const unsigned int dofs_per_cell = fe_dual.dofs_per_cell;
    std::vector<types::global_dof_index> dof_indices(dofs_per_cell);
    std::vector<types::global_dof_index> dof_indices_neighbor(dofs_per_cell);
    //data structures used to integrate on cells
-   std::vector<Vector<double>> dual_weights_cell_values(n_q_points, Vector<double>(n_components));
-   std::vector<Vector<double>> cell_residual(n_q_points, Vector<double>(n_components));
+   std::vector<Vector<double>> dual_weights_cell_values(n_q_points, 
+                                                        Vector<double>(n_components));
+   std::vector<Vector<double>> cell_residual(n_q_points,
+                                             Vector<double>(n_components));
    //std::vector<Vector<double>> W(n_q_points, Vector<double>(n_components));
    //std::vector<std::vector<Vector<double>>> grad_W(n_q_points, std::vector<Vector<double>>(dim, Vector<double>(n_components)));
    Table<2, double> W(n_q_points, n_components);
    Table<3, double> grad_W(n_q_points, n_components, dim);
-   //note: why we use array rather than FullMatrix? sice FullMatrix need arguments to allocate memory each
+   //note: why we use array rather than FullMatrix? 
+   //sice FullMatrix need arguments to allocate memory each
    //time such a matrix is created.
    //std::vector<FullMatrix<double>> A_x(n_q_points, FullMatrix<double>(n_components,n_components)),
    //                                A_y(n_q_points, FullMatrix<double>(n_components,n_components));
@@ -446,22 +401,26 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
    for(unsigned int p=0; p!=n_q_points; ++p)
       grad_dual_weights[p].resize(n_components);   //denote d(z-z_h)/dx and d(z-z_h)/dy
    */
-   FEFaceValues<dim> fe_face_values_cell(fe_dual, face_quadrature_formula, update_values|
-                                                                           update_quadrature_points|
-                                                                           update_gradients|
-                                                                           update_JxW_values|
-                                                                           update_normal_vectors),
-                     fe_face_values_neighbor(fe_dual, face_quadrature_formula, update_values|
-                                                                               update_quadrature_points|
-                                                                               update_gradients|
-                                                                               update_JxW_values|
-                                                                               update_normal_vectors);
-   FESubfaceValues<dim> fe_subface_values_cell(fe_dual, face_quadrature_formula, update_values|
-                                                                                 update_quadrature_points|
-                                                                                 update_JxW_values|
-                                                                                 update_normal_vectors),
-                        fe_subface_values_neighbor(fe_dual,face_quadrature_formula,update_values|
-                                                                                   update_quadrature_points);
+   FEFaceValues<dim> fe_face_values_cell(fe_dual, face_quadrature_formula, 
+                                                  update_values|
+                                                  update_quadrature_points|
+                                                  update_gradients|
+                                                  update_JxW_values|
+                                                  update_normal_vectors),
+                     fe_face_values_neighbor(fe_dual, face_quadrature_formula, 
+                                                      update_values|
+                                                      update_quadrature_points|
+                                                      update_gradients|
+                                                      update_JxW_values|
+                                                      update_normal_vectors);
+   FESubfaceValues<dim> fe_subface_values_cell(fe_dual, face_quadrature_formula,
+                                                        update_values|
+                                                        update_quadrature_points|
+                                                        update_JxW_values|
+                                                        update_normal_vectors),
+                        fe_subface_values_neighbor(fe_dual,face_quadrature_formula,
+                                                           update_values|
+                                                           update_quadrature_points);
    const unsigned int n_face_q_points = face_quadrature_formula.size();
    //data structures used to integrate on faces
    std::vector<Vector<double>> dual_weights_face_values(n_face_q_points, Vector<double>(n_components));
@@ -470,7 +429,8 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
    //std::vector<Vector<double>> Wminus(n_face_q_points, Vector<double>(n_components));
    Table<2, double> Wplus(n_face_q_points, n_components),
                     Wminus(n_face_q_points, n_components);
-   std::vector<Vector<double>> boundary_values(n_face_q_points, Vector<double>(n_components));
+   std::vector<Vector<double>> boundary_values(n_face_q_points, 
+                                               Vector<double>(n_components));
    
    //std::vector<Vector<double>> normal_flux(n_face_q_points, Vector<double>(n_components)); 
    //std::vector<Vector<double>> numerical_flux(n_face_q_points, Vector<double>(n_components));
@@ -515,6 +475,7 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
             grad_dual_weights[q_point][d] = 0;
       }
       
+      //compute cell_residuals: df1(u)/dx+df2(u)/dy
       for(unsigned int q_point=0; q_point<n_q_points; ++q_point){
          //get grad_W and Jacobi matrix on all quadrature points
          for(unsigned int i=0; i<dofs_per_cell; ++i){
@@ -525,7 +486,9 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
                grad_W[q_point][c][d] += primal_solution(dof_indices[i]) * 
                                         fe_values.shape_grad_component(i,q_point,c)[d];
          }
-         EulerEquations<dim>::compute_Jacobi_matrix (W[q_point], A_x[q_point], A_y[q_point]); //get A_x, A_y
+         EulerEquations<dim>::compute_Jacobi_matrix (W[q_point], 
+                                                     A_x[q_point], 
+                                                     A_y[q_point]); //get A_x, A_y
 
          //use Jacobi matrix and grad_W to compute A_x*dW/dx+A_y*dW/dy, i.e. the residual
          /*A_x[q_point].vmult_add(cell_residual[q_point], grad_W[q_point][0]);  //cell_residual+=A_x*dW/dx+A_y*dW/dy
@@ -545,7 +508,9 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
                           dual_weights_cell_values[q_point] *        //here is Vector*Vector
                           fe_values.JxW(q_point);  
       }
+
       refinement_indicators(present_cell) -= cell_integral;
+
       //compute mu_shock_cell, it's used to compute the integral term related to diffusion 
       for(unsigned int q_point=0; q_point<n_q_points; ++q_point){
          for(unsigned int c=0; c<n_components; ++c)
@@ -577,12 +542,13 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
       //-------------------------integrate_over_face----------------------------
       for(unsigned int face_no=0; face_no<GeometryInfo<dim>::faces_per_cell; ++face_no){
          //set data structure's initial value to 0
-         for(unsigned int q=0; q<n_face_q_points; ++q)
+         for(unsigned int q=0; q<n_face_q_points; ++q){
             for(unsigned int c=0; c<n_components; ++c){
                Wplus[q][c] = 0;
                Wminus[q][c]= 0;
             }
-      
+         }
+
          //if the face at boundary
          if(cell->face(face_no)->at_boundary()){
             const unsigned int& boundary_id = cell->face(face_no)->boundary_id(); 
@@ -633,6 +599,7 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
             }
             refinement_indicators(present_cell) += face_integral;
          }
+
          //if the neighbor is finer(i.e. the current face has children)
          else if(cell->face(face_no)->has_children()){
             //
@@ -670,8 +637,8 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
                for(unsigned int p=0; p<n_face_q_points; p++){
                   //compute the normal_flux and numerical_flux on current quadrature_point
                   EulerEquations<dim>::compute_normal_flux(Wplus[p], 
-                                                           fe_subface_values_cell.normal_vector(p),
-                                                           normal_flux[p]);
+                                                     fe_subface_values_cell.normal_vector(p),
+                                                     normal_flux[p]);
                   numerical_normal_flux(fe_subface_values_cell.normal_vector(p),
                                         Wplus[p],
                                         Wminus[p],
@@ -692,6 +659,7 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
                refinement_indicators(present_cell) += subface_integral;
             }//end subface loop
          }
+
          //if the neighbor is as fine as our cell
          else if(!cell->neighbor_is_coarser(face_no)){
             //get Wplus
@@ -744,6 +712,7 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
             }
             refinement_indicators(present_cell) += face_integral;  
          }
+
          //if the neighbor is coarser
          else{
             //get Wplus
@@ -801,33 +770,24 @@ DualSolver<dim>::compute_DWR_indicators(Vector<double>& refinement_indicators)
       }//end face_loop  
  
    }// end cell_loop
+
    std::cout<<"finish computing the error indicator"<<std::endl;
+   
+   //following is the estimated error in the objective functional.
+   estimated_error_obj = std::accumulate(refinement_indicators.begin(),
+                                         refinement_indicators.end(), 0.);
+
    std::cout<<"estimated error = "
-            <<std::accumulate(refinement_indicators.begin(), refinement_indicators.end(), 0.)
+            <<estimated_error_obj
             <<std::endl;
 
    //set the indicators on each cell to positive
    for(Vector<double>::iterator i = refinement_indicators.begin(); i!=refinement_indicators.end(); ++i)
-      *i = std::fabs(*i);
-
-   //output the dual_solution
-   output_results();  
-   
-   std::cout<<"start to write out the refinement_indicator..."<<std::endl;
-   //std::cout<<refinement_indicators[2695]<<std::endl;
-   //refinement_indicators.print(std::cout, 4);
-   DataOut<dim> data_out;
-   data_out.attach_dof_handler (dof_handler);
-   data_out.add_data_vector (refinement_indicators, 
-                             "refinement_indicator",
-                             DataOut<dim>::type_cell_data);//TODO
-
-   data_out.build_patches (mapping);
-
-   std::cout << "Writing file of refinement_indicator" << std::endl;   
-   std::ofstream output ("refinement_indicator.plt");
-   data_out.write_tecplot (output);
+      *i = std::fabs(*i); 
 }
+
+
+
 
 //
 template<int dim>
@@ -873,14 +833,9 @@ DualSolver<dim>::integrate_cell_term(DoFInfo& dinfo, CellInfo& info)
             grad_W[q][c][d] += dof * fe_v.shape_grad_component(i, q, c)[d];
          
       }  
-   /*
-   typedef Sacado::Fad::DFad<double> FluxMatrix[EulerEquations<dim>::n_components][dim];
-   FluxMatrix *flux = new FluxMatrix[n_q_points];
-   
-   typedef Sacado::Fad::DFad<double> ForcingVector[EulerEquations<dim>::n_components];
-   ForcingVector *forcing = new ForcingVector[n_q_points];
-   */
-   std::vector<std::array<std::array<Sacado::Fad::DFad<double>, dim>, EulerEquations<dim>::n_components>> 
+
+   std::vector<std::array<std::array<Sacado::Fad::DFad<double>, dim>,
+               EulerEquations<dim>::n_components>> 
                                                                        flux(n_q_points);
    std::vector<std::array<Sacado::Fad::DFad<double>, EulerEquations<dim>::n_components>>   
                                                                     forcing(n_q_points);
@@ -891,15 +846,11 @@ DualSolver<dim>::integrate_cell_term(DoFInfo& dinfo, CellInfo& info)
    Table<2,Sacado::Fad::DFad<double>> R(n_q_points, EulerEquations<dim>::n_components);
 
    //get the jacobi on quadrature points
-   /*
-   typedef Sacado::Fad::DFad<double> JacobiMatrix[EulerEquations<dim>::n_components][EulerEquations<dim>::n_components];
-   JacobiMatrix *A_x = new JacobiMatrix[n_q_points];
-   JacobiMatrix *A_y = new JacobiMatrix[n_q_points];
-   */
-   std::vector<std::array<std::array<Sacado::Fad::DFad<double>, EulerEquations<dim>::n_components>,
-                                                                EulerEquations<dim>::n_components>> 
-                                                  A_x(n_q_points),
-                                                  A_y(n_q_points);
+   std::vector<std::array<std::array<Sacado::Fad::DFad<double>,
+               EulerEquations<dim>::n_components>,
+               EulerEquations<dim>::n_components>> 
+                                   A_x(n_q_points),
+                                   A_y(n_q_points);
 //--------------------------------------------------------------------------------------
    for (unsigned int q=0; q<n_q_points; ++q)
    {
@@ -929,12 +880,14 @@ DualSolver<dim>::integrate_cell_term(DoFInfo& dinfo, CellInfo& info)
 
    for(unsigned int point=0; point<n_q_points; ++point){
      for(unsigned int c=0; c<EulerEquations<dim>::n_components; ++c){
-       R_average[point] += std::abs(R[point][c]);  //sum all the components of R on current point 
+       R_average[point] += R[point][c]*R[point][c];  //L2 norm
      } 
-     R_average[point] /= EulerEquations<dim>::n_components;
+     R_average[point] = std::sqrt(R_average[point]);
+
      mu_shock_cell[point] = parameters.diffusion_coef*
-                            std::pow(fe_v.get_cell()->diameter(),2-parameters.diffusion_power)*
-                            R_average[point];
+                            std::pow(fe_v.get_cell()->diameter(),
+                                     2-parameters.diffusion_power)*
+                                     R_average[point];
    }
    /*
    //compute the average of mu_shock_cell on a cell just for visualization
@@ -991,18 +944,7 @@ DualSolver<dim>::integrate_cell_term(DoFInfo& dinfo, CellInfo& info)
       for (unsigned int k=0; k<dofs_per_cell; ++k)
          local_matrix (i, k) += F_i.fastAccessDx(k);
       
-      /* used to test if I can assemble the system_matrix in transposed order, but failed  
-      for (unsigned int k=0; k<dofs_per_cell; ++k)
-         local_matrix (k, i) += F_i.fastAccessDx(k);
-      */
-      //local_vector (i) -= F_i.val();
-      //local_vector.print(std::cout,3);
    }
-   
-   //delete[] forcing;
-   //delete[] flux;
-   //delete[] A_x;
-   //delete[] A_y;
 }
 template<int dim>
 void
@@ -1075,14 +1017,13 @@ DualSolver<dim>::integrate_boundary_term(DoFInfo& dinfo, CellInfo& info)
    typename EulerEquations<dim>::BoundaryKind boundary_kind = 
       parameters.boundary_conditions[boundary_id].kind;
 //=================================================================================================
-/* //the old method 
+ //the old method 
    for (unsigned int q = 0; q < n_q_points; q++)
       EulerEquations<dim>::compute_Wminus (boundary_kind,
                                            fe_v.normal_vector(q),
                                            Wplus[q],
                                            boundary_values[q],
                                            Wminus[q]);
-   
    
    // Compute numerical flux at all quadrature points
    std::vector<std::array<Sacado::Fad::DFad<double>, EulerEquations<dim>::n_components>>
@@ -1100,7 +1041,7 @@ DualSolver<dim>::integrate_boundary_term(DoFInfo& dinfo, CellInfo& info)
       //   std::cout<<normal_fluxes[q][i].val()<<",";
       //std::cout<<std::endl;
       }
-*/
+
 //==================================================================================================
    //the new method
    //In order to obtain an adjoint-consistent discretization, there will be 2 differences 
@@ -1110,7 +1051,8 @@ DualSolver<dim>::integrate_boundary_term(DoFInfo& dinfo, CellInfo& info)
    //Secondly, when compute u-(u+) on solid wall boundary, we should make it satisfy
    //v dot n = 0, i.e. let v- = v - (vdotn)n, rather than letting v- = v - 2(vdotn)n. 
    //see Hartmann's paper "derivation of an adjoint consistent discontinuous galerkin
-   //discretization of the compressible euler equations" for more detail.      
+   //discretization of the compressible euler equations" for more detail.   
+   /*   
    for(unsigned int q = 0; q < n_q_points; q++)
       EulerEquations<dim>::compute_W_prescribed(boundary_kind,
                                                 fe_v.normal_vector(q),
@@ -1125,6 +1067,7 @@ DualSolver<dim>::integrate_boundary_term(DoFInfo& dinfo, CellInfo& info)
       EulerEquations<dim>::compute_normal_flux(Wminus[q], 
                                                fe_v.normal_vector(q),
                                                normal_fluxes[q]);
+   */
 //==================================================================================================
    // Now assemble the face term
    for (unsigned int i=0; i<fe_v.dofs_per_cell; ++i)
@@ -1171,10 +1114,6 @@ DualSolver<dim>::integrate_boundary_term(DoFInfo& dinfo, CellInfo& info)
          for (unsigned int k=0; k<dofs_per_cell; ++k)
             local_matrix (i,k) += F_i.fastAccessDx(k);
          
-         /* used to test if I can assemble the system_matrix in transposed order, but failed 
-         for (unsigned int k=0; k<dofs_per_cell; ++k)
-            local_matrix (k, i) += F_i.fastAccessDx(k);
-         */
          //local_vector (i) -= F_i.val();
          //local_vector.print(std::cout,3);     //TO SHOW THE LOCAL_VECTOR
          //std::cout<<"this is boundary_term on cell: "<<cell_no<<F_i.val()<<std::endl;
@@ -1402,7 +1341,6 @@ DualSolver<dim>::integrate_face_term(DoFInfo& dinfo1, DoFInfo& dinfo2,
          //std::cout<<"this is interior_fece_term of neighboring face on cell: "<<cell_no<<std::endl;
       }
    
-   //delete[] normal_fluxes;
 }
 
 template class DualSolver<2>;

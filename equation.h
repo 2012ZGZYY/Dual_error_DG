@@ -851,7 +851,6 @@ struct EulerEquations
     const dealii::Tensor<1,dim>       &normal,
     const InputVector                 &Wplus,
     const InputVector                 &Wminus,
-    //typename InputVector::value_type  (&normal_flux)[n_components]
     std::array<typename InputVector::value_type, n_components> &normal_flux
    )
    {
@@ -882,7 +881,6 @@ struct EulerEquations
    (
     const dealii::Tensor<1,dim>      &normal,
     const InputVector                &Wminus,
-    //typename InputVector::value_type (&normal_flux)[n_components]
     std::array<typename InputVector::value_type, n_components> &normal_flux
    )
    {
@@ -927,8 +925,7 @@ struct EulerEquations
    // leads to the following function:
    template <typename InputVector>
    static
-   void compute_forcing_vector (const InputVector &W,
-                                //number            (&forcing)[n_components]
+   void compute_forcing_vector (const InputVector &W,                       
                                 std::array<typename InputVector::value_type, n_components> &forcing)
    {
       const double gravity = -1.0;
@@ -1144,7 +1141,7 @@ struct EulerEquations
       for (unsigned int d = 0; d < dim; d++)
             vdotn += Wplus[d]*normal_vector[d];
       for (unsigned int c=0; c<dim; ++c)
-            W_wall[c] = Wplus[c] - vdotn * normal_vector[c];
+            W_wall[c] = Wplus[c] - 2 * vdotn * normal_vector[c]; //standard method
 
       W_wall[density_component] = Wplus[density_component];
       W_wall[energy_component]  = Wplus[energy_component];

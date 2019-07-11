@@ -117,11 +117,13 @@ void ConservationLaw<dim>::integrate_cell_term_explicit
 
    for(unsigned int point=0; point<n_q_points; ++point){
      for(unsigned int c=0; c<n_components; ++c){
-       R_average[point] += std::abs(R[point][c]);  //sum all the components of R on current point 
-     } 
-     R_average[point] /= n_components;
+       R_average[point] += R[point][c]*R[point][c];  //L2 norm
+     }
+     R_average[point] = std::sqrt(R_average[point]);
+
      mu_shock_cell[point] = parameters.diffusion_coef*
-                            std::pow(fe_v.get_cell()->diameter(),2-parameters.diffusion_power)*
+                            std::pow(fe_v.get_cell()->diameter(),
+                                     2-parameters.diffusion_power)*
                             R_average[point];
    }
 
@@ -171,10 +173,6 @@ void ConservationLaw<dim>::integrate_cell_term_explicit
       local_vector (i) -= F_i;
    }
    
-   //delete[] forcing;
-   //delete[] flux;
-   //delete[] A_x;
-   //delete[] A_y;
 }
 
 
@@ -250,7 +248,8 @@ void ConservationLaw<dim>::integrate_boundary_term_explicit
             grad_Wplus[q][c][d] += current_solution(dof_indices[i]) *
                                    fe_v.shape_grad_component(i, q, c)[d];*/
       }
-      /* //the old method in this code 
+       
+      //the old method in this code 
       EulerEquations<dim>::compute_Wminus (boundary_kind,
                                            fe_v.normal_vector(q),
                                            Wplus[q],
@@ -262,8 +261,8 @@ void ConservationLaw<dim>::integrate_boundary_term_explicit
                                cell_average[cell_no],
                                cell_average[cell_no],
                                normal_fluxes[q]);
-      */
-//===================================================================================================
+      
+//==========================================================================================
       /* //the new method, only 2 boundary kinds: farfield or slip wall
       //In order to obtain an adjoint-consistent discretization, there will be 2 differences 
       //when computing the boundary flux comparing to the standard method of dg code.
@@ -273,7 +272,8 @@ void ConservationLaw<dim>::integrate_boundary_term_explicit
       //v dot n = 0, i.e. let v- = v - (vdotn)n, rather than letting v- = v - 2(vdotn)n. 
       //see Hartmann's paper "derivation of an adjoint consistent discontinuous galerkin
       //discretization of the compressible euler equations" for more detail.   
-      */     
+      */   
+      /*  
       EulerEquations<dim>::compute_W_prescribed(boundary_kind,
                                                 fe_v.normal_vector(q),
                                                 Wplus[q],
@@ -282,8 +282,11 @@ void ConservationLaw<dim>::integrate_boundary_term_explicit
        
       //on all boundaries, the flux is H(u+,u-(u+),n)=n dot F(u-u(u+)), 
       //while u-(u+) varies on different boundaries kinds.
-      EulerEquations<dim>::compute_normal_flux(Wminus[q], fe_v.normal_vector(q),normal_fluxes[q]);
-//===================================================================================================
+      EulerEquations<dim>::compute_normal_flux(Wminus[q], 
+                                               fe_v.normal_vector(q),
+                                               normal_fluxes[q]);
+      */
+//===========================================================================================
    }
    
    // Now assemble the face term
