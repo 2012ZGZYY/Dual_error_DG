@@ -1,0 +1,1 @@
+struct2gmsh.f is a fortran code which read the naca.struct file and write a naca.msh file. I just used the "gfortran struct2gmsh.f" command to get the executable file "a.out" and used "./a.out" command to run it, and then I got the naca.msh file, which will be used for the simulation.
